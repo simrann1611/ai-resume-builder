@@ -2,7 +2,7 @@ import streamlit as st
 from io import BytesIO
 from pypdf import PdfReader
 
-# Securely import modern Google GenAI SDK
+# Securely import Google GenAI
 try:
     from google import genai
 except ImportError:
@@ -15,7 +15,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # ---------------------------------------------------------------------------
-# CORE APPLICATION LOGIC
+# CORE APPLICATION LOGIC (THE UPGRADED FORMULA & PROMPT)
 # ---------------------------------------------------------------------------
 
 def extract_text_from_pdf(uploaded_file):
@@ -32,102 +32,148 @@ def extract_text_from_pdf(uploaded_file):
         st.error(f"Error parsing PDF file: {e}")
         return ""
 
-def analyze_resume_with_ai(api_key, resume_text, job_description):
-    """Connects to Gemini 2.5 Flash API in real-time for ATS evaluation."""
+def generate_optimized_resume_data(api_key, resume_text, job_description):
+    """
+    Connects to Gemini 2.5 Flash with an advanced corporate recruiter prompt.
+    Uses the strict X-Y-Z impact formula to draft a brand new resume.
+    """
     try:
         client = genai.Client(api_key=api_key)
-        prompt = f"""
-        You are an expert ATS (Applicant Tracking System) scanner and senior corporate recruiter. 
-        Analyze the following Resume against the Job Description.
         
-        Provide your evaluation in these exact sections:
-        1. OVERALL ATS MATCH SCORE (Out of 100)
-        2. CRITICAL GAPS IDENTIFIED (Missing skills, keywords, or background)
-        3. ACTIONABLE TAILORING RECOMMENDATIONS (Specific adjustments to fix gaps)
-        4. SUGGESTED OPTIMIZED PROFESSIONAL SUMMARY (Ready to copy-paste)
+        # This upgraded prompt forces a split output structure and applies strict writing formulas
+        prompt = f"""
+        You are an elite Tech Recruiter and expert ATS optimization engine. 
+        Analyze the following [CURRENT RESUME] against the [TARGET JOB DESCRIPTION].
+        
+        CRITICAL TASK: You must perform two operations:
+        1. Create an ATS metric evaluation report.
+        2. Rewrite their entire resume into a high-scoring, perfectly tailored version.
+        
+        When rewriting the experience section, use the strict Google X-Y-Z Formula: 
+        "Accomplished [X] as measured by [Y], by doing [Z]". Use metrics, percentages, and hard keywords where logical.
+
+        Format your entire response using the exact layout tags below:
+        
+        ---REPORT_START---
+        ### 🎯 ATS Match Rating
+        [Provide a hard percentage score out of 100 based on keyword density and keyword alignment]
+        
+        ### 🔍 Critical Keywords & Skills Missing
+        - [List core skills missing from the original text that are highly requested in the JD]
+        
+        ### 🛠️ Strategic Alignment Gaps
+        - [Explain what content structural gaps exist between the candidate's current profile and the target role]
+        ---REPORT_END---
+        
+        ---RESUME_START---
+        # [CANDIDATE FULL NAME]
+        [Contact Information Placeholder]
+        
+        ## 📝 PROFESSIONAL SUMMARY
+        [Write a stellar, 3-4 sentence summary loaded with key terms from the job description]
+        
+        ## 🛠️ TECHNICAL SKILLS & COMPETENCIES
+        [List relevant skills matching the JD precisely, organized cleanly by category]
+        
+        ## 💼 PROFESSIONAL EXPERIENCE
+        [Rewrite their job history into high-impact bullet points using the action-oriented X-Y-Z format]
+        
+        ## 🎓 EDUCATION & CREDENTIALS
+        [Clean presentation of academic history and certifications]
+        ---RESUME_END---
         
         Target Job Description:
         {job_description}
         
-        Applicant Resume:
+        Current Resume:
         {resume_text}
         """
+        
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt
         )
         return response.text
     except Exception as e:
-        return f"AI Connection Error: {e}. Please check if your Gemini API key is correct."
+        return f"AI Connection Error: {e}. Check your API Key configuration."
 
 # ---------------------------------------------------------------------------
-# DOWNLOADABLE FILE GENERATORS
+# OUTPUT EXPORT COMPILERS
 # ---------------------------------------------------------------------------
 
-def generate_docx(report_text):
-    """Compiles the AI feedback into a downloadable Word file."""
+def generate_docx(resume_text):
+    """Compiles the rewritten resume text directly into a professional Word file."""
     doc = Document()
-    doc.add_heading('ATS Resume Optimization Report', level=1)
-    for line in report_text.split('\n'):
-        if line.strip():
-            doc.add_paragraph(line)
+    for line in resume_text.split('\n'):
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+        if line_clean.startswith('# '):
+            doc.add_heading(line_clean.replace('# ', ''), level=0)
+        elif line_clean.startswith('## '):
+            doc.add_heading(line_clean.replace('## ', ''), level=1)
+        elif line_clean.startswith('### '):
+            doc.add_heading(line_clean.replace('### ', ''), level=2)
+        elif line_clean.startswith(('- ', '* ')):
+            doc.add_paragraph(line_clean[2:], style='List Bullet')
+        else:
+            doc.add_paragraph(line_clean)
+            
     bio = BytesIO()
     doc.save(bio)
     bio.seek(0)
     return bio
 
-def generate_pdf(report_text):
-    """Compiles the AI feedback into a cleanly formatted PDF file."""
+def generate_pdf(resume_text):
+    """Compiles the rewritten resume text directly into a PDF template document."""
     bio = BytesIO()
     doc = SimpleDocTemplate(bio, pagesize=letter)
     styles = getSampleStyleSheet()
-    story = [Paragraph("<b>ATS Optimization Report</b>", styles['Title']), Spacer(1, 15)]
+    story = []
     
-    for line in report_text.split('\n'):
-        if line.strip():
-            # Clean basic symbols for PDF library compatibility
-            clean_line = line.replace('*', '').replace('#', '').strip()
-            story.append(Paragraph(clean_line, styles['Normal']))
-            story.append(Spacer(1, 6))
+    for line in resume_text.split('\n'):
+        line_clean = line.strip().replace('**', '').replace('*', '').replace('#', '').strip()
+        if not line_clean:
+            continue
+        if 'PROFESSIONAL SUMMARY' in line or 'TECHNICAL SKILLS' in line or 'PROFESSIONAL EXPERIENCE' in line or 'EDUCATION' in line:
+            story.append(Spacer(1, 10))
+            story.append(Paragraph(f"<b>{line_clean}</b>", styles['Heading2']))
+            story.append(Spacer(1, 4))
+        elif line.strip().startswith(('-', '*')):
+            story.append(Paragraph(f"• {line_clean}", styles['Normal']))
+        else:
+            story.append(Paragraph(line_clean, styles['Normal']))
             
     doc.build(story)
     bio.seek(0)
     return bio
 
 # ---------------------------------------------------------------------------
-# USER INTERFACE DESIGN
+# MAIN USER INTERFACE DESIGN
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="AI Resume ATS Optimizer", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="Next-Gen AI ATS Resume Engine", page_icon="🎯", layout="wide")
 
-st.title("🎯 AI Resume ATS Ranking & Gap Optimizer")
-st.write("Upload your current CV and paste your target job profile to get instantaneous scoring, benchmark tracking, and document exports.")
+st.title("🚀 Smart AI Resume Optimizer & Rewriter")
+st.write("Upload a draft resume to evaluate performance gaps and build a fully tailored, ready-to-export version.")
 
 # Sidebar setup for security keys
-api_key_input = st.sidebar.text_input("Enter Gemini API Key:", type="password", help="Get your key from Google AI Studio")
+api_key_input = st.sidebar.text_input("Enter Gemini API Key:", type="password")
 
-# Grid layout split for workspace efficiency
+# Grid layout split for inputs
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("📋 1. Target Job Parameters")
-    job_description = st.text_area(
-        "Paste the Target Job Description here:", 
-        height=280, 
-        placeholder="Paste requirements, core duties, or stack qualifications..."
-    )
+    job_description = st.text_area("Paste the Target Job Description here:", height=250, placeholder="Requirements, duties...")
 
 with col2:
     st.subheader("📄 2. Your Current Document")
-    uploaded_file = st.file_uploader(
-        "Upload your current Resume/CV (PDF Format):", 
-        type=["pdf"]
-    )
+    uploaded_file = st.file_uploader("Upload your current Resume/CV (PDF):", type=["pdf"])
 
 st.markdown("---")
 
-# Execution trigger
-if st.button("Analyze Alignment Gaps", type="primary", use_container_width=True):
+if st.button("Run ATS Screen & Auto-Rewrite", type="primary", use_container_width=True):
     if not api_key_input:
         st.warning("Please input your Gemini API Key in the left sidebar layout pane.")
     elif not job_description:
@@ -135,34 +181,52 @@ if st.button("Analyze Alignment Gaps", type="primary", use_container_width=True)
     elif not uploaded_file:
         st.warning("Please upload a PDF version of your resume.")
     else:
-        with st.spinner("Analyzing resume against role requirements in real time..."):
-            resume_text = extract_text_from_pdf(uploaded_file)
-            if resume_text:
-                ai_report = analyze_resume_with_ai(api_key_input, resume_text, job_description)
-                st.session_state['active_report'] = ai_report
+        with st.spinner("Executing structural re-engineering and performance scoring..."):
+            raw_resume_text = extract_text_from_pdf(uploaded_file)
+            if raw_resume_text:
+                full_ai_output = generate_optimized_resume_data(api_key_input, raw_resume_text, job_description)
+                
+                # Split the raw data into separate states for clean presentation
+                report_content = "Analysis pending..."
+                best_resume_content = "Generation pending..."
+                
+                if "---REPORT_START---" in full_ai_output and "---REPORT_END---" in full_ai_output:
+                    report_content = full_ai_output.split("---REPORT_START---")[1].split("---REPORT_END---")[0].strip()
+                if "---RESUME_START---" in full_ai_output and "---RESUME_END---" in full_ai_output:
+                    best_resume_content = full_ai_output.split("---RESUME_START---")[1].split("---RESUME_END---")[0].strip()
+                
+                st.session_state['report_view'] = report_content
+                st.session_state['resume_view'] = best_resume_content
 
-# Handle persistence and downloads
-if 'active_report' in st.session_state:
-    st.subheader("📊 Live ATS Matrix & Gap Analytics")
-    st.markdown(st.session_state['active_report'])
+# Display results in beautifully isolated UI Tabs if processing state is active
+if 'report_view' in st.session_state and 'resume_view' in st.session_state:
     
-    st.markdown("---")
-    st.subheader("📥 Export Structural Alterations")
+    # Create two clear display tabs
+    tab1, tab2 = st.tabs(["📊 ATS Score & Gap Report", "✨ Fully Rewritten Perfect Resume"])
     
-    dl_word, dl_pdf = st.columns(2)
-    with dl_word:
-        st.download_button(
-            label="Download Recommendations as Word (.docx)",
-            data=generate_docx(st.session_state['active_report']),
-            file_name="ATS_Resume_Optimization_Guide.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True
-        )
-    with dl_pdf:
-        st.download_button(
-            label="Download Recommendations as PDF (.pdf)",
-            data=generate_pdf(st.session_state['active_report']),
-            file_name="ATS_Resume_Optimization_Guide.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+    with tab1:
+        st.markdown(st.session_state['report_view'])
+        
+    with tab2:
+        st.markdown("### 🛠️ Tailored Resume Preview")
+        st.info("The experience data below has been fully updated using the standard metrics-driven X-Y-Z impact format.")
+        st.text_area("Copy Text Version:", value=st.session_state['resume_view'], height=400)
+        
+        st.markdown("### 📥 Download Clean Document Exports")
+        dl_word, dl_pdf = st.columns(2)
+        with dl_word:
+            st.download_button(
+                label="Download New Resume as Word (.docx)",
+                data=generate_docx(st.session_state['resume_view']),
+                file_name="Optimized_Target_Resume.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+        with dl_pdf:
+            st.download_button(
+                label="Download New Resume as PDF (.pdf)",
+                data=generate_pdf(st.session_state['resume_view']),
+                file_name="Optimized_Target_Resume.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
